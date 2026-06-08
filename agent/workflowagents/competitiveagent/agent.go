@@ -9,7 +9,7 @@ package competitiveagent
 import (
 	"fmt"
 	"iter"
-	"log"
+	"log/slog"
 	"sort"
 	"strings"
 	"sync"
@@ -95,7 +95,7 @@ func New(cfg Config) (agent.Agent, error) {
 						}
 
 						if workerErr != nil {
-							log.Printf("[competitiveagent] worker %s failed: %v", w.Name(), workerErr)
+							slog.Warn("competitiveagent worker failed", "worker", w.Name(), "error", workerErr)
 							return // skip this worker's result
 						}
 
@@ -188,7 +188,7 @@ func New(cfg Config) (agent.Agent, error) {
 					}
 
 					if voterErr != nil {
-						log.Printf("[competitiveagent] voter %s failed: %v", voter.Name(), voterErr)
+						slog.Warn("competitiveagent voter failed", "voter", voter.Name(), "error", voterErr)
 						continue // skip this voter's ballot (abstention)
 					}
 

@@ -10,7 +10,7 @@ package debateagent
 import (
 	"fmt"
 	"iter"
-	"log"
+	"log/slog"
 	"strings"
 
 	"google.golang.org/genai"
@@ -150,7 +150,7 @@ func New(cfg Config) (agent.Agent, error) {
 							}
 						}
 						if debaterErr != nil {
-							log.Printf("[debateagent] debater %s failed in round %d: %v", debater.Name(), round, debaterErr)
+							slog.Warn("debateagent debater failed", "debater", debater.Name(), "round", round, "error", debaterErr)
 							// Keep previous position on error
 							continue
 						}

@@ -2,7 +2,7 @@ package guardrail
 
 import (
 	"fmt"
-	"log"
+	"log/slog"
 
 	"google.golang.org/genai"
 
@@ -48,10 +48,10 @@ func NewPlugin(guardrails ...Guardrail) *plugin.Plugin {
 			case ActionBlock:
 				return nil, fmt.Errorf("[guardrail:%s] input blocked: %s", result.Guardrail, result.Reason)
 			case ActionWarn:
-				log.Printf("[guardrail:%s] input warning: %s", result.Guardrail, result.Reason)
+				slog.Warn("guardrail input warning", "guardrail", result.Guardrail, "reason", result.Reason)
 				return nil, nil
 			case ActionSanitize:
-				log.Printf("[guardrail:%s] input sanitized: %s", result.Guardrail, result.Reason)
+				slog.Info("guardrail input sanitized", "guardrail", result.Guardrail, "reason", result.Reason)
 				replaceEventText(event, result.Sanitized)
 				return event, nil
 			}
@@ -79,10 +79,10 @@ func NewPlugin(guardrails ...Guardrail) *plugin.Plugin {
 			case ActionBlock:
 				return nil, fmt.Errorf("[guardrail:%s] output blocked: %s", result.Guardrail, result.Reason)
 			case ActionWarn:
-				log.Printf("[guardrail:%s] output warning: %s", result.Guardrail, result.Reason)
+				slog.Warn("guardrail output warning", "guardrail", result.Guardrail, "reason", result.Reason)
 				return nil, nil
 			case ActionSanitize:
-				log.Printf("[guardrail:%s] output sanitized: %s", result.Guardrail, result.Reason)
+				slog.Info("guardrail output sanitized", "guardrail", result.Guardrail, "reason", result.Reason)
 				replaceContentText(resp.Content, result.Sanitized)
 				return resp, nil
 			}

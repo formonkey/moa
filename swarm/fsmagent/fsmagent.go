@@ -10,7 +10,7 @@ package fsmagent
 import (
 	"fmt"
 	"iter"
-	"log"
+	"log/slog"
 	"os"
 	"regexp"
 	"strings"
@@ -218,10 +218,10 @@ func runFSM(
 				fmt.Sprintf("%s.%s", cfg.Name, state.ResultKey),
 				lastText,
 			); err != nil {
-				log.Printf("[WARN] fsmagent: failed to set state %q: %v", state.ResultKey, err)
+				slog.Warn("fsmagent: failed to set state", "key", state.ResultKey, "error", err)
 			}
 			if err := ctx.Session().State().Set(state.ResultKey, lastText); err != nil {
-				log.Printf("[WARN] fsmagent: failed to set state %q: %v", state.ResultKey, err)
+				slog.Warn("fsmagent: failed to set state", "key", state.ResultKey, "error", err)
 			}
 		}
 
@@ -372,7 +372,7 @@ func seedSessionState(ctx agent.InvocationContext) {
 		}
 		if len(parts) > 0 {
 			if err := sess.State().Set("prompt", strings.Join(parts, "\n")); err != nil {
-				log.Printf("[WARN] fsmagent: failed to set 'prompt' state: %v", err)
+				slog.Warn("fsmagent: failed to set state", "key", "prompt", "error", err)
 			}
 		}
 	}
@@ -403,7 +403,7 @@ func seedSessionState(ctx agent.InvocationContext) {
 		}
 		if history.Len() > 0 {
 			if err := sess.State().Set("history", history.String()); err != nil {
-				log.Printf("[WARN] fsmagent: failed to set 'history' state: %v", err)
+				slog.Warn("fsmagent: failed to set state", "key", "history", "error", err)
 			}
 		}
 	}
@@ -429,7 +429,7 @@ func loadRAGFiles(ctx agent.InvocationContext, cfg Config) {
 
 	if ragContent.Len() > 0 {
 		if err := ctx.Session().State().Set("rag_context", ragContent.String()); err != nil {
-			log.Printf("[WARN] fsmagent: failed to set 'rag_context' state: %v", err)
+			slog.Warn("fsmagent: failed to set state", "key", "rag_context", "error", err)
 		}
 	}
 }
@@ -485,7 +485,7 @@ func executeDocSearch(
 
 	// Inject the search prompt so the librarian can use it
 	if err := ctx.Session().State().Set("docsearch_query", searchPrompt); err != nil {
-		log.Printf("[WARN] fsmagent: failed to set 'docsearch_query' state: %v", err)
+		slog.Warn("fsmagent: failed to set state", "key", "docsearch_query", "error", err)
 	}
 
 	var resultText string
@@ -512,7 +512,7 @@ func executeDocSearch(
 	}
 	if resultText != "" {
 		if err := ctx.Session().State().Set(contextVar, resultText); err != nil {
-			log.Printf("[WARN] fsmagent: failed to set %q state: %v", contextVar, err)
+			slog.Warn("fsmagent: failed to set state", "key", contextVar, "error", err)
 		}
 	} else if ds.Required {
 		yield(nil, fmt.Errorf("fsmagent: docsearch agent %q returned empty result", ds.AgentName))

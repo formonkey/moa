@@ -4,9 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
-	"strings"
 	"sync"
 	"time"
 
@@ -39,6 +38,8 @@ func NewServer(r *runner.Runner, card AgentCard) *Server {
 	s.mux.HandleFunc("POST /tasks/send", s.handleSendTask)
 	s.mux.HandleFunc("GET /tasks/{id}", s.handleGetTask)
 	s.mux.HandleFunc("POST /tasks/{id}/cancel", s.handleCancelTask)
+	s.mux.HandleFunc("GET /healthz", s.handleHealthz)
+	s.mux.HandleFunc("GET /readyz", s.handleReadyz)
 
 	return s
 }
@@ -50,7 +51,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 // ListenAndServe starts the A2A server.
 func (s *Server) ListenAndServe(addr string) error {
-	log.Printf("[a2a] serving %s at %s", s.card.Name, addr)
+	slog.Info("a2a server starting", "name", s.card.Name, "addr", addr)
 	return http.ListenAndServe(addr, s)
 }
 
@@ -259,5 +260,44 @@ func Serve(r *runner.Runner, card AgentCard, addr string) error {
 	return s.ListenAndServe(addr)
 }
 
-// ensure strings is used
-var _ = strings.Contains
+// --- Health checks ---
+
+// handleHealthz is a liveness probe — returns 200 if the server is running.
+func (s *Server) handleHealthz(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]any{
+		"status": "ok",
+		"agent":  s.card.Name,
+	})
+}
+
+// handleReadyz is a readiness probe — returns 200 with task statistics.
+func (s *Server) handleReadyz(w http.ResponseWriter, r *http.Request) {
+	s.mu.RLock()
+	total := len(s.tasks)
+	working := 0
+	completed := 0
+	failed := 0
+	for _, t := range s.tasks {
+		switch t.State {
+		case TaskStateWorking:
+			working++
+		case TaskStateCompleted:
+			completed++
+		case TaskStateFailed:
+			failed++
+		}
+	}
+	s.mu.RUnlock()
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]any{
+		"status":    "ready",
+		"agent":     s.card.Name,
+		"tasks":     total,
+		"working":   working,
+		"completed": completed,
+		"failed":    failed,
+	})
+}
+

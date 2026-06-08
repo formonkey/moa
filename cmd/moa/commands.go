@@ -5,7 +5,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 	"strings"
 
@@ -40,7 +40,7 @@ func cmdRun(ctx context.Context, args []string) error {
 	// Setup telemetry
 	shutdown, err := telemetry.Setup(ctx, telemetry.WithServiceName("moa-cli"))
 	if err != nil {
-		log.Printf("telemetry setup: %v (continuing without telemetry)", err)
+		slog.Warn("telemetry setup failed, continuing without", "error", err)
 	} else {
 		defer shutdown(ctx)
 	}

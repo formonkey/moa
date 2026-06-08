@@ -3,7 +3,7 @@ package skillopt
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -96,8 +96,7 @@ func (o *Optimizer) Train(ctx context.Context, dataset Dataset) (*TrainResult, e
 
 		// --- Meta-update from rejected buffer (epoch > 0) ---
 		if epoch > 0 && o.cfg.RejectedEditBuffer && len(rejectedBuffer) > 0 {
-			log.Printf("[skillopt] epoch %d: re-evaluating %d rejected edits from previous epoch",
-				epoch, len(rejectedBuffer))
+			slog.Info("skillopt re-evaluating rejected edits", "epoch", epoch, "count", len(rejectedBuffer))
 
 			// Try applying buffered edits with current context
 			for _, edit := range rejectedBuffer {
@@ -157,7 +156,7 @@ func (o *Optimizer) Train(ctx context.Context, dataset Dataset) (*TrainResult, e
 			// Backward pass: reflect on trajectories to propose edits
 			edits, err := o.reflector.Reflect(ctx, currentSkill, trajectories)
 			if err != nil {
-				log.Printf("[skillopt] epoch %d batch %d: reflector error: %v", epoch, batchIdx, err)
+				slog.Warn("skillopt reflector error", "epoch", epoch, "batch", batchIdx, "error", err)
 				continue
 			}
 
@@ -170,7 +169,7 @@ func (o *Optimizer) Train(ctx context.Context, dataset Dataset) (*TrainResult, e
 
 			// Log skipped edits
 			for _, s := range skipped {
-				log.Printf("[skillopt] epoch %d batch %d: skipped edit (target not found): %s", epoch, batchIdx, s)
+				slog.Warn("skillopt edit target not found", "epoch", epoch, "batch", batchIdx, "target", s)
 			}
 
 			if len(applied) == 0 {
@@ -179,8 +178,9 @@ func (o *Optimizer) Train(ctx context.Context, dataset Dataset) (*TrainResult, e
 
 			// Enforce max skill length
 			if o.cfg.MaxSkillLen > 0 && len(candidateSkill) > o.cfg.MaxSkillLen {
-				log.Printf("[skillopt] epoch %d batch %d: candidate skill too long (%d > %d), truncating edits",
-					epoch, batchIdx, len(candidateSkill), o.cfg.MaxSkillLen)
+				slog.Warn("skillopt candidate skill too long, truncating",
+					"epoch", epoch, "batch", batchIdx,
+					"len", len(candidateSkill), "max", o.cfg.MaxSkillLen)
 				// Fall back to current skill (don't accept the edit)
 				for _, a := range applied {
 					epochEditsRejected++
@@ -207,8 +207,9 @@ func (o *Optimizer) Train(ctx context.Context, dataset Dataset) (*TrainResult, e
 					}
 				}
 
-				log.Printf("[skillopt] epoch %d batch %d: accepted %d edits (val: %.3f → %.3f)",
-					epoch, batchIdx, len(applied), currentValScore, candidateValScore)
+				slog.Info("skillopt edits accepted",
+					"epoch", epoch, "batch", batchIdx, "edits", len(applied),
+					"val_before", currentValScore, "val_after", candidateValScore)
 			} else {
 				// Reject: candidate is worse
 				epochEditsRejected += len(applied)
@@ -221,8 +222,9 @@ func (o *Optimizer) Train(ctx context.Context, dataset Dataset) (*TrainResult, e
 					}
 				}
 
-				log.Printf("[skillopt] epoch %d batch %d: rejected %d edits (val: %.3f → %.3f)",
-					epoch, batchIdx, len(applied), currentValScore, candidateValScore)
+				slog.Info("skillopt edits rejected",
+					"epoch", epoch, "batch", batchIdx, "edits", len(applied),
+					"val_before", currentValScore, "val_after", candidateValScore)
 			}
 		}
 
@@ -255,7 +257,7 @@ func (o *Optimizer) Train(ctx context.Context, dataset Dataset) (*TrainResult, e
 				SkillLen:      epochMetrics.SkillLen,
 			}
 			if err := o.store.SaveCheckpoint(epoch, currentSkill, storeMetrics); err != nil {
-				log.Printf("[skillopt] checkpoint save error: %v", err)
+				slog.Error("skillopt checkpoint save error", "error", err)
 			}
 		}
 
@@ -266,7 +268,7 @@ func (o *Optimizer) Train(ctx context.Context, dataset Dataset) (*TrainResult, e
 			bestEpoch = epoch
 			if o.store != nil {
 				if err := o.store.SaveBestSkill(currentSkill); err != nil {
-					log.Printf("[skillopt] best skill save error: %v", err)
+					slog.Error("skillopt best skill save error", "error", err)
 				}
 			}
 		}
@@ -275,7 +277,10 @@ func (o *Optimizer) Train(ctx context.Context, dataset Dataset) (*TrainResult, e
 			o.cfg.OnEpochEnd(epoch, epochMetrics)
 		}
 
-		log.Printf("[skillopt] %s", epochMetrics)
+		slog.Info("skillopt epoch complete",
+			"epoch", epoch, "train_score", epochMetrics.TrainScore,
+			"val_score", epochMetrics.ValScore, "edits_applied", epochMetrics.EditsApplied,
+			"duration", epochMetrics.Duration)
 	}
 
 	// Save final history
@@ -293,7 +298,7 @@ func (o *Optimizer) Train(ctx context.Context, dataset Dataset) (*TrainResult, e
 			}
 		}
 		if err := o.store.SaveHistory(storeHistory); err != nil {
-			log.Printf("[skillopt] history save error: %v", err)
+			slog.Error("skillopt history save error", "error", err)
 		}
 	}
 

@@ -9,7 +9,7 @@ import (
 	"context"
 	"fmt"
 	"iter"
-	"log"
+	"log/slog"
 	"sync"
 
 	"github.com/google/uuid"
@@ -273,7 +273,7 @@ func (r *Runner) Run(ctx context.Context, userID, sessionID string, msg *genai.C
 		if r.pluginManager != nil {
 			defer func() {
 				if err := r.pluginManager.AfterRun(cbCtx); err != nil {
-					log.Printf("[runner] plugin AfterRun error: %v", err)
+					slog.Warn("plugin AfterRun error", "error", err)
 				}
 			}()
 		}
@@ -365,7 +365,7 @@ func (r *Runner) findAgentToRun(sess session.Session, msg *genai.Content) agent.
 			}
 		}
 
-		log.Printf("go-brain: event from unknown agent: %s (event %s)", event.Author, event.ID)
+		slog.Warn("event from unknown agent", "author", event.Author, "event_id", event.ID)
 	}
 
 	// Falls back to root agent
