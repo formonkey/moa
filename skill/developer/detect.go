@@ -18,9 +18,11 @@ import (
 
 // ProjectInfo contains detected project metadata.
 type ProjectInfo struct {
-	// Language is the primary language (e.g., "go", "typescript", "python", "rust").
+	// Language is the primary language (e.g., "go", "typescript", "python", "rust",
+	// "java", "kotlin", "csharp", "php", "ruby", "swift", "dart").
 	Language string `json:"language"`
-	// Framework is the detected framework (e.g., "gin", "next", "angular", "fastapi").
+	// Framework is the detected framework (e.g., "gin", "next", "angular", "spring-boot",
+	// "laravel", "aspnet", "rails", "django", "fastapi", "flutter").
 	Framework string `json:"framework,omitempty"`
 	// EntryPoints are the main files/packages detected.
 	EntryPoints []string `json:"entry_points,omitempty"`
@@ -35,6 +37,9 @@ type ProjectInfo struct {
 // Detect inspects a project directory and returns metadata about the project.
 // It examines manifest files (go.mod, package.json, etc.) to determine
 // language, framework, and entry points.
+//
+// Supported languages: Go, TypeScript/JavaScript, Python, Rust, Java, Kotlin,
+// C#, PHP, Ruby, Swift, Dart.
 func Detect(projectDir string) (*ProjectInfo, error) {
 	absDir, err := filepath.Abs(projectDir)
 	if err != nil {
@@ -57,6 +62,13 @@ func Detect(projectDir string) (*ProjectInfo, error) {
 		detectNodeTS,
 		detectPython,
 		detectRust,
+		detectJava,
+		detectKotlin,
+		detectCSharp,
+		detectPHP,
+		detectRuby,
+		detectSwift,
+		detectDart,
 	}
 
 	for _, detect := range detectors {
@@ -176,6 +188,9 @@ func detectNodeTS(dir string, info *ProjectInfo) bool {
 		{"nest", "nestjs"},
 		{"@nestjs/core", "nestjs"},
 		{"hono", "hono"},
+		{"koa", "koa"},
+		{"@remix-run/react", "remix"},
+		{"astro", "astro"},
 	}
 	for _, fp := range frameworkPriority {
 		if _, ok := allDeps[fp.pkg]; ok {
@@ -217,6 +232,8 @@ func detectPython(dir string, info *ProjectInfo) bool {
 			"starlette": "starlette",
 			"tornado":  "tornado",
 			"aiohttp":  "aiohttp",
+			"litestar": "litestar",
+			"sanic":    "sanic",
 		}
 		for pkg, fw := range frameworks {
 			if strings.Contains(strings.ToLower(content), pkg) {
@@ -226,7 +243,7 @@ func detectPython(dir string, info *ProjectInfo) bool {
 		}
 
 		// Entry points
-		info.EntryPoints = findEntryPoints(dir, "main.py", "app.py", "manage.py")
+		info.EntryPoints = findEntryPoints(dir, "main.py", "app.py", "manage.py", "wsgi.py", "asgi.py")
 		return true
 	}
 
@@ -240,6 +257,8 @@ func detectPython(dir string, info *ProjectInfo) bool {
 			"fastapi":  "fastapi",
 			"django":   "django",
 			"flask":    "flask",
+			"sanic":    "sanic",
+			"litestar": "litestar",
 		}
 		for pkg, fw := range frameworks {
 			if strings.Contains(content, pkg) {
@@ -248,7 +267,7 @@ func detectPython(dir string, info *ProjectInfo) bool {
 			}
 		}
 
-		info.EntryPoints = findEntryPoints(dir, "main.py", "app.py", "manage.py")
+		info.EntryPoints = findEntryPoints(dir, "main.py", "app.py", "manage.py", "wsgi.py", "asgi.py")
 		return true
 	}
 
@@ -298,6 +317,412 @@ func detectRust(dir string, info *ProjectInfo) bool {
 	return true
 }
 
+// --- Java detection ---
+
+func detectJava(dir string, info *ProjectInfo) bool {
+	// Maven (pom.xml)
+	pomPath := filepath.Join(dir, "pom.xml")
+	if data, err := os.ReadFile(pomPath); err == nil {
+		info.Language = "java"
+		content := strings.ToLower(string(data))
+
+		// Extract artifactId as module name
+		if idx := strings.Index(content, "<artifactid>"); idx >= 0 {
+			rest := content[idx+len("<artifactid>"):]
+			if end := strings.Index(rest, "</artifactid>"); end >= 0 {
+				info.ModuleName = rest[:end]
+			}
+		}
+
+		frameworks := map[string]string{
+			"spring-boot":          "spring-boot",
+			"spring-webflux":       "spring-webflux",
+			"quarkus":              "quarkus",
+			"micronaut":            "micronaut",
+			"jakarta.faces":        "jsf",
+			"javax.servlet":        "servlet",
+			"dropwizard":           "dropwizard",
+			"vert.x":               "vertx",
+			"play-java":            "play",
+			"struts":               "struts",
+		}
+		for pkg, fw := range frameworks {
+			if strings.Contains(content, pkg) {
+				info.Framework = fw
+				break
+			}
+		}
+
+		info.EntryPoints = findJavaEntryPoints(dir)
+		return true
+	}
+
+	// Gradle (build.gradle or build.gradle.kts)
+	for _, gradleFile := range []string{"build.gradle", "build.gradle.kts"} {
+		gradlePath := filepath.Join(dir, gradleFile)
+		if data, err := os.ReadFile(gradlePath); err == nil {
+			info.Language = "java"
+			content := strings.ToLower(string(data))
+
+			// Check if it's Kotlin DSL (likely a Kotlin project)
+			if strings.HasSuffix(gradleFile, ".kts") {
+				if strings.Contains(content, "kotlin(") || strings.Contains(content, "org.jetbrains.kotlin") {
+					info.Language = "kotlin"
+				}
+			}
+
+			frameworks := map[string]string{
+				"spring-boot":           "spring-boot",
+				"org.springframework":    "spring-boot",
+				"quarkus":               "quarkus",
+				"micronaut":             "micronaut",
+				"io.vertx":              "vertx",
+				"android":               "android",
+				"com.android":           "android",
+				"ktor":                  "ktor",
+				"compose":               "compose",
+			}
+			for pkg, fw := range frameworks {
+				if strings.Contains(content, pkg) {
+					info.Framework = fw
+					break
+				}
+			}
+
+			// Extract module name from settings.gradle
+			settingsPath := filepath.Join(dir, "settings.gradle")
+			if sdata, err := os.ReadFile(settingsPath); err == nil {
+				for _, line := range strings.Split(string(sdata), "\n") {
+					line = strings.TrimSpace(line)
+					if strings.HasPrefix(line, "rootProject.name") {
+						parts := strings.SplitN(line, "=", 2)
+						if len(parts) == 2 {
+							info.ModuleName = strings.Trim(strings.TrimSpace(parts[1]), "'\"")
+						}
+					}
+				}
+			}
+
+			info.EntryPoints = findJavaEntryPoints(dir)
+			return true
+		}
+	}
+
+	return false
+}
+
+func findJavaEntryPoints(dir string) []string {
+	var entries []string
+	// Standard Maven/Gradle entry points
+	candidates := []string{
+		"src/main/java", "src/main/kotlin",
+	}
+	for _, c := range candidates {
+		mainDir := filepath.Join(dir, c)
+		_ = filepath.WalkDir(mainDir, func(path string, d os.DirEntry, err error) error {
+			if err != nil || d.IsDir() {
+				return nil
+			}
+			if strings.HasSuffix(path, "Application.java") ||
+				strings.HasSuffix(path, "Application.kt") ||
+				strings.HasSuffix(path, "Main.java") ||
+				strings.HasSuffix(path, "Main.kt") {
+				if rel, err := filepath.Rel(dir, path); err == nil {
+					entries = append(entries, rel)
+				}
+			}
+			return nil
+		})
+	}
+	return entries
+}
+
+// --- Kotlin detection (standalone, not Gradle-based) ---
+
+func detectKotlin(dir string, info *ProjectInfo) bool {
+	// Kotlin multiplatform or standalone (build.gradle.kts with kotlin plugin)
+	// Already handled in detectJava for Gradle projects.
+	// This handles pure Kotlin projects with no Gradle (rare but possible).
+	for _, gradleFile := range []string{"build.gradle.kts"} {
+		gradlePath := filepath.Join(dir, gradleFile)
+		if data, err := os.ReadFile(gradlePath); err == nil {
+			content := strings.ToLower(string(data))
+			if strings.Contains(content, "kotlin") {
+				info.Language = "kotlin"
+
+				frameworks := map[string]string{
+					"ktor":          "ktor",
+					"spring-boot":   "spring-boot",
+					"compose":       "compose",
+					"android":       "android",
+					"kotlinx.coroutines": "coroutines",
+				}
+				for pkg, fw := range frameworks {
+					if strings.Contains(content, pkg) {
+						info.Framework = fw
+						break
+					}
+				}
+
+				info.EntryPoints = findJavaEntryPoints(dir)
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// --- C# detection ---
+
+func detectCSharp(dir string, info *ProjectInfo) bool {
+	// Look for *.csproj or *.sln files
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return false
+	}
+
+	for _, e := range entries {
+		name := e.Name()
+		if strings.HasSuffix(name, ".csproj") {
+			data, err := os.ReadFile(filepath.Join(dir, name))
+			if err != nil {
+				continue
+			}
+
+			info.Language = "csharp"
+			info.ModuleName = strings.TrimSuffix(name, ".csproj")
+			content := strings.ToLower(string(data))
+
+			frameworks := map[string]string{
+				"microsoft.aspnetcore":     "aspnet",
+				"microsoft.net.sdk.web":    "aspnet",
+				"microsoft.net.sdk.blazorwebassembly": "blazor",
+				"microsoft.maui":            "maui",
+				"avalonia":                  "avalonia",
+				"xamarin":                   "xamarin",
+				"unity":                     "unity",
+			}
+			for pkg, fw := range frameworks {
+				if strings.Contains(content, pkg) {
+					info.Framework = fw
+					break
+				}
+			}
+
+			// Entry points
+			info.EntryPoints = findEntryPoints(dir, "Program.cs", "Startup.cs",
+				"src/Program.cs", "src/Startup.cs")
+			return true
+		}
+		if strings.HasSuffix(name, ".sln") {
+			info.Language = "csharp"
+			info.ModuleName = strings.TrimSuffix(name, ".sln")
+			info.EntryPoints = findEntryPoints(dir, "Program.cs", "Startup.cs")
+			return true
+		}
+	}
+
+	return false
+}
+
+// --- PHP detection ---
+
+func detectPHP(dir string, info *ProjectInfo) bool {
+	composerPath := filepath.Join(dir, "composer.json")
+	data, err := os.ReadFile(composerPath)
+	if err != nil {
+		return false
+	}
+
+	info.Language = "php"
+
+	var composer struct {
+		Name    string            `json:"name"`
+		Require map[string]string `json:"require"`
+	}
+	if err := json.Unmarshal(data, &composer); err == nil {
+		info.ModuleName = composer.Name
+
+		frameworkPriority := []struct {
+			pkg       string
+			framework string
+		}{
+			{"laravel/framework", "laravel"},
+			{"symfony/framework-bundle", "symfony"},
+			{"symfony/http-kernel", "symfony"},
+			{"cakephp/cakephp", "cakephp"},
+			{"codeigniter4/framework", "codeigniter"},
+			{"yiisoft/yii2", "yii"},
+			{"slim/slim", "slim"},
+			{"wp-cli/wp-cli", "wordpress"},
+			{"drupal/core", "drupal"},
+			{"statamic/cms", "statamic"},
+		}
+		for _, fp := range frameworkPriority {
+			if _, ok := composer.Require[fp.pkg]; ok {
+				info.Framework = fp.framework
+				break
+			}
+		}
+	}
+
+	// Check for artisan (Laravel marker)
+	if info.Framework == "" {
+		if _, err := os.Stat(filepath.Join(dir, "artisan")); err == nil {
+			info.Framework = "laravel"
+		}
+	}
+
+	// Entry points
+	info.EntryPoints = findEntryPoints(dir,
+		"public/index.php", "index.php", "artisan",
+		"bin/console", "web/app.php", "web/index.php")
+	return true
+}
+
+// --- Ruby detection ---
+
+func detectRuby(dir string, info *ProjectInfo) bool {
+	gemfilePath := filepath.Join(dir, "Gemfile")
+	data, err := os.ReadFile(gemfilePath)
+	if err != nil {
+		return false
+	}
+
+	info.Language = "ruby"
+	content := strings.ToLower(string(data))
+
+	frameworks := map[string]string{
+		"rails":     "rails",
+		"sinatra":   "sinatra",
+		"hanami":    "hanami",
+		"roda":      "roda",
+		"grape":     "grape",
+		"padrino":   "padrino",
+		"jekyll":    "jekyll",
+	}
+	for pkg, fw := range frameworks {
+		if strings.Contains(content, pkg) {
+			info.Framework = fw
+			break
+		}
+	}
+
+	// Parse gemspec or Gemfile for project name
+	gemspecFiles, _ := filepath.Glob(filepath.Join(dir, "*.gemspec"))
+	if len(gemspecFiles) > 0 {
+		info.ModuleName = strings.TrimSuffix(filepath.Base(gemspecFiles[0]), ".gemspec")
+	}
+
+	info.EntryPoints = findEntryPoints(dir,
+		"config.ru", "app.rb", "config/application.rb",
+		"bin/rails", "Rakefile")
+	return true
+}
+
+// --- Swift detection ---
+
+func detectSwift(dir string, info *ProjectInfo) bool {
+	// Swift Package Manager
+	spmPath := filepath.Join(dir, "Package.swift")
+	if data, err := os.ReadFile(spmPath); err == nil {
+		info.Language = "swift"
+		content := string(data)
+
+		// Extract package name
+		if idx := strings.Index(content, "name:"); idx >= 0 {
+			rest := content[idx:]
+			if qStart := strings.Index(rest, "\""); qStart >= 0 {
+				rest = rest[qStart+1:]
+				if qEnd := strings.Index(rest, "\""); qEnd >= 0 {
+					info.ModuleName = rest[:qEnd]
+				}
+			}
+		}
+
+		lower := strings.ToLower(content)
+		frameworks := map[string]string{
+			"vapor":        "vapor",
+			"hummingbird":  "hummingbird",
+			"kitura":       "kitura",
+			"perfect":      "perfect",
+		}
+		for pkg, fw := range frameworks {
+			if strings.Contains(lower, pkg) {
+				info.Framework = fw
+				break
+			}
+		}
+
+		info.EntryPoints = findEntryPoints(dir, "Sources/main.swift",
+			"Sources/App/main.swift", "Sources/Run/main.swift")
+		return true
+	}
+
+	// Xcode project
+	entries, _ := os.ReadDir(dir)
+	for _, e := range entries {
+		if strings.HasSuffix(e.Name(), ".xcodeproj") || strings.HasSuffix(e.Name(), ".xcworkspace") {
+			info.Language = "swift"
+			info.ModuleName = strings.TrimSuffix(strings.TrimSuffix(e.Name(), ".xcodeproj"), ".xcworkspace")
+			// Check for SwiftUI
+			if _, err := os.Stat(filepath.Join(dir, "ContentView.swift")); err == nil {
+				info.Framework = "swiftui"
+			}
+			info.EntryPoints = findEntryPoints(dir, "AppDelegate.swift",
+				"ContentView.swift", "App.swift")
+			return true
+		}
+	}
+
+	return false
+}
+
+// --- Dart/Flutter detection ---
+
+func detectDart(dir string, info *ProjectInfo) bool {
+	pubspecPath := filepath.Join(dir, "pubspec.yaml")
+	data, err := os.ReadFile(pubspecPath)
+	if err != nil {
+		return false
+	}
+
+	info.Language = "dart"
+	content := strings.ToLower(string(data))
+
+	// Parse name
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "name:") {
+			info.ModuleName = strings.TrimSpace(strings.TrimPrefix(line, "name:"))
+			break
+		}
+	}
+
+	if strings.Contains(content, "flutter") {
+		info.Framework = "flutter"
+	} else {
+		// Server-side Dart frameworks
+		frameworks := map[string]string{
+			"shelf":       "shelf",
+			"aqueduct":    "aqueduct",
+			"angel":       "angel",
+			"dart_frog":   "dart_frog",
+			"serverpod":   "serverpod",
+		}
+		for pkg, fw := range frameworks {
+			if strings.Contains(content, pkg) {
+				info.Framework = fw
+				break
+			}
+		}
+	}
+
+	info.EntryPoints = findEntryPoints(dir, "lib/main.dart", "bin/main.dart",
+		"bin/server.dart", "web/main.dart")
+	return true
+}
+
 // --- Helpers ---
 
 func findEntryPoints(dir string, candidates ...string) []string {
@@ -323,6 +748,9 @@ func buildStructureTree(dir string) string {
 		"dist": true, ".next": true, "__pycache__": true,
 		".venv": true, "target": true, "vendor": true,
 		".codegraph": true, ".idea": true, ".vscode": true,
+		"bin": false, "obj": false, // C# build dirs
+		".gradle": true, ".dart_tool": true, ".pub-cache": true,
+		"build": true, "Pods": true,
 	}
 
 	var dirs []string
@@ -370,7 +798,9 @@ func inferFromExtensions(dir string) string {
 		if err != nil || d.IsDir() {
 			// Skip common non-source dirs
 			name := d.Name()
-			if d.IsDir() && (name == "node_modules" || name == ".git" || name == "vendor" || name == "target") {
+			if d.IsDir() && (name == "node_modules" || name == ".git" || name == "vendor" ||
+				name == "target" || name == "build" || name == "Pods" ||
+				name == ".gradle" || name == ".dart_tool") {
 				return filepath.SkipDir
 			}
 			return nil
@@ -387,6 +817,20 @@ func inferFromExtensions(dir string) string {
 			counts["python"]++
 		case ".rs":
 			counts["rust"]++
+		case ".java":
+			counts["java"]++
+		case ".kt", ".kts":
+			counts["kotlin"]++
+		case ".cs":
+			counts["csharp"]++
+		case ".php":
+			counts["php"]++
+		case ".rb":
+			counts["ruby"]++
+		case ".swift":
+			counts["swift"]++
+		case ".dart":
+			counts["dart"]++
 		}
 		return nil
 	})
@@ -401,3 +845,4 @@ func inferFromExtensions(dir string) string {
 	}
 	return best
 }
+

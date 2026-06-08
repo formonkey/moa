@@ -188,6 +188,242 @@ func TestDetectGoCmdPattern(t *testing.T) {
 	}
 }
 
+func TestDetectJavaMaven(t *testing.T) {
+	dir := t.TempDir()
+
+	pom := `<?xml version="1.0"?>
+<project>
+  <groupId>com.example</groupId>
+  <artifactId>myapi</artifactId>
+  <version>1.0.0</version>
+  <dependencies>
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-web</artifactId>
+    </dependency>
+  </dependencies>
+</project>`
+	os.WriteFile(filepath.Join(dir, "pom.xml"), []byte(pom), 0o644)
+	os.MkdirAll(filepath.Join(dir, "src", "main", "java", "com", "example"), 0o755)
+	os.WriteFile(filepath.Join(dir, "src", "main", "java", "com", "example", "Application.java"), []byte(""), 0o644)
+
+	info, err := Detect(dir)
+	if err != nil {
+		t.Fatalf("Detect failed: %v", err)
+	}
+	if info.Language != "java" {
+		t.Errorf("expected language 'java', got %q", info.Language)
+	}
+	if info.Framework != "spring-boot" {
+		t.Errorf("expected framework 'spring-boot', got %q", info.Framework)
+	}
+	if info.ModuleName != "myapi" {
+		t.Errorf("expected module name 'myapi', got %q", info.ModuleName)
+	}
+	if len(info.EntryPoints) == 0 {
+		t.Error("expected at least one entry point")
+	}
+}
+
+func TestDetectJavaGradle(t *testing.T) {
+	dir := t.TempDir()
+
+	gradle := `plugins {
+    id 'org.springframework.boot' version '3.2.0'
+    id 'java'
+}
+dependencies {
+    implementation 'org.springframework.boot:spring-boot-starter-web'
+}
+`
+	os.WriteFile(filepath.Join(dir, "build.gradle"), []byte(gradle), 0o644)
+	os.WriteFile(filepath.Join(dir, "settings.gradle"), []byte("rootProject.name = 'my-gradle-app'\n"), 0o644)
+
+	info, err := Detect(dir)
+	if err != nil {
+		t.Fatalf("Detect failed: %v", err)
+	}
+	if info.Language != "java" {
+		t.Errorf("expected language 'java', got %q", info.Language)
+	}
+	if info.Framework != "spring-boot" {
+		t.Errorf("expected framework 'spring-boot', got %q", info.Framework)
+	}
+	if info.ModuleName != "my-gradle-app" {
+		t.Errorf("expected module name 'my-gradle-app', got %q", info.ModuleName)
+	}
+}
+
+func TestDetectPHP(t *testing.T) {
+	dir := t.TempDir()
+
+	composer := `{
+  "name": "acme/my-laravel-app",
+  "require": {
+    "php": "^8.2",
+    "laravel/framework": "^11.0"
+  }
+}`
+	os.WriteFile(filepath.Join(dir, "composer.json"), []byte(composer), 0o644)
+	os.WriteFile(filepath.Join(dir, "artisan"), []byte("#!/usr/bin/env php\n"), 0o644)
+	os.MkdirAll(filepath.Join(dir, "public"), 0o755)
+	os.WriteFile(filepath.Join(dir, "public", "index.php"), []byte(""), 0o644)
+
+	info, err := Detect(dir)
+	if err != nil {
+		t.Fatalf("Detect failed: %v", err)
+	}
+	if info.Language != "php" {
+		t.Errorf("expected language 'php', got %q", info.Language)
+	}
+	if info.Framework != "laravel" {
+		t.Errorf("expected framework 'laravel', got %q", info.Framework)
+	}
+	if info.ModuleName != "acme/my-laravel-app" {
+		t.Errorf("expected module name 'acme/my-laravel-app', got %q", info.ModuleName)
+	}
+}
+
+func TestDetectCSharp(t *testing.T) {
+	dir := t.TempDir()
+
+	csproj := `<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="8.0.0" />
+  </ItemGroup>
+</Project>`
+	os.WriteFile(filepath.Join(dir, "MyApi.csproj"), []byte(csproj), 0o644)
+	os.WriteFile(filepath.Join(dir, "Program.cs"), []byte("var builder = WebApplication.CreateBuilder(args);\n"), 0o644)
+
+	info, err := Detect(dir)
+	if err != nil {
+		t.Fatalf("Detect failed: %v", err)
+	}
+	if info.Language != "csharp" {
+		t.Errorf("expected language 'csharp', got %q", info.Language)
+	}
+	if info.Framework != "aspnet" {
+		t.Errorf("expected framework 'aspnet', got %q", info.Framework)
+	}
+	if info.ModuleName != "MyApi" {
+		t.Errorf("expected module name 'MyApi', got %q", info.ModuleName)
+	}
+}
+
+func TestDetectRuby(t *testing.T) {
+	dir := t.TempDir()
+
+	gemfile := `source 'https://rubygems.org'
+gem 'rails', '~> 7.1'
+gem 'pg'
+gem 'puma'
+`
+	os.WriteFile(filepath.Join(dir, "Gemfile"), []byte(gemfile), 0o644)
+	os.MkdirAll(filepath.Join(dir, "config"), 0o755)
+	os.WriteFile(filepath.Join(dir, "config", "application.rb"), []byte(""), 0o644)
+	os.WriteFile(filepath.Join(dir, "config.ru"), []byte(""), 0o644)
+
+	info, err := Detect(dir)
+	if err != nil {
+		t.Fatalf("Detect failed: %v", err)
+	}
+	if info.Language != "ruby" {
+		t.Errorf("expected language 'ruby', got %q", info.Language)
+	}
+	if info.Framework != "rails" {
+		t.Errorf("expected framework 'rails', got %q", info.Framework)
+	}
+}
+
+func TestDetectSwift(t *testing.T) {
+	dir := t.TempDir()
+
+	spm := `// swift-tools-version:5.9
+import PackageDescription
+let package = Package(
+    name: "MyVaporApp",
+    dependencies: [
+        .package(url: "https://github.com/vapor/vapor.git", from: "4.89.0"),
+    ]
+)
+`
+	os.WriteFile(filepath.Join(dir, "Package.swift"), []byte(spm), 0o644)
+	os.MkdirAll(filepath.Join(dir, "Sources"), 0o755)
+	os.WriteFile(filepath.Join(dir, "Sources", "main.swift"), []byte(""), 0o644)
+
+	info, err := Detect(dir)
+	if err != nil {
+		t.Fatalf("Detect failed: %v", err)
+	}
+	if info.Language != "swift" {
+		t.Errorf("expected language 'swift', got %q", info.Language)
+	}
+	if info.Framework != "vapor" {
+		t.Errorf("expected framework 'vapor', got %q", info.Framework)
+	}
+	if info.ModuleName != "MyVaporApp" {
+		t.Errorf("expected module name 'MyVaporApp', got %q", info.ModuleName)
+	}
+}
+
+func TestDetectDartFlutter(t *testing.T) {
+	dir := t.TempDir()
+
+	pubspec := `name: my_flutter_app
+description: A new Flutter project.
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.2
+`
+	os.WriteFile(filepath.Join(dir, "pubspec.yaml"), []byte(pubspec), 0o644)
+	os.MkdirAll(filepath.Join(dir, "lib"), 0o755)
+	os.WriteFile(filepath.Join(dir, "lib", "main.dart"), []byte(""), 0o644)
+
+	info, err := Detect(dir)
+	if err != nil {
+		t.Fatalf("Detect failed: %v", err)
+	}
+	if info.Language != "dart" {
+		t.Errorf("expected language 'dart', got %q", info.Language)
+	}
+	if info.Framework != "flutter" {
+		t.Errorf("expected framework 'flutter', got %q", info.Framework)
+	}
+	if info.ModuleName != "my_flutter_app" {
+		t.Errorf("expected module name 'my_flutter_app', got %q", info.ModuleName)
+	}
+}
+
+func TestDetectKotlinKtor(t *testing.T) {
+	dir := t.TempDir()
+
+	gradle := `plugins {
+    kotlin("jvm") version "1.9.0"
+    id("io.ktor.plugin") version "2.3.0"
+}
+dependencies {
+    implementation("io.ktor:ktor-server-core")
+}
+`
+	os.WriteFile(filepath.Join(dir, "build.gradle.kts"), []byte(gradle), 0o644)
+
+	info, err := Detect(dir)
+	if err != nil {
+		t.Fatalf("Detect failed: %v", err)
+	}
+	if info.Language != "kotlin" {
+		t.Errorf("expected language 'kotlin', got %q", info.Language)
+	}
+	if info.Framework != "ktor" {
+		t.Errorf("expected framework 'ktor', got %q", info.Framework)
+	}
+}
+
 // --- Directive generation tests ---
 
 func TestBuildDirectiveWithCodegraph(t *testing.T) {
