@@ -1,0 +1,655 @@
+# swarm.yaml — Full Engineering Swarm (moa v0.1.x)
+#
+# This is a complete multi-agent swarm that orchestrates a development team.
+# It demonstrates ALL moa features in a single YAML file:
+#
+#   ✅ FSM agents with states, routes, transitions, and docsearch
+#   ✅ Per-agent RAG (each agent gets its own document context)
+#   ✅ Cross-agent transitions (tech-lead → frontend → backend → reviewer)
+#   ✅ Template interpolation ({{.prompt}}, {{.history}}, {{.agent.result}})
+#   ✅ Trigger-based agents (FILE_MODIFIED, TASK_COMPLETED, BUILD_FAILED)
+#   ✅ Librarian agent for knowledge retrieval via docsearch
+#   ✅ Tenth Man pattern (devil's advocate review)
+#   ✅ Max retries with fallback states
+#   ✅ 10 adapter support (ollama, openai, gemini, anthropic, etc.)
+#   ✅ Specialties and language per agent
+#   ✅ Hierarchical flow with master agent
+#
+# Plugins (cost-governor, circuit-breaker, teacher-escalation) are
+# attached at the runner level in main.go, not in this YAML.
+#
+# Usage:
+#   cd examples/swarm-dev-team
+#   go run main.go "Create a task manager with Angular frontend and Go API"
+
+swarm:
+  flow: "hierarchical"
+  max_workers: 4
+  store:
+    provider: "local"
+    path: ".moa"
+
+  agents:
+
+    # ================================================================
+    #  LIBRARIAN — Central Knowledge Retrieval
+    # ================================================================
+    # The librarian holds the entire RAG knowledge base. Other agents
+    # call it via `docsearch` to inject relevant documentation into
+    # their prompts before executing.
+
+    - name: "librarian"
+      adapter: "ollama"
+      language: "ES"
+      model: "gemma3:4b"
+
+      specialties:
+        - "Knowledge Retrieval"
+        - "Documentation Search"
+        - "Context Extraction"
+
+      rags:
+        files:
+          - "./rag-docs/frontend-angular.md"
+          - "./rag-docs/backend-go.md"
+          - "./rag-docs/design-system.md"
+
+      system: >
+        You are the Librarian of the engineering swarm. You hold the entire knowledge base.
+        When asked for search keywords, you analyze the task context and produce the most
+        relevant technical documentation from the vector database.
+        You are precise, concise, and never hallucinate — you only reference what exists
+        in the documentation you have been given.
+
+      states:
+        - name: "initial"
+          system: >
+            You are a documentation retrieval agent. Given a task or query, search the
+            knowledge base and return the most relevant documentation sections.
+          prompt: |
+            {{.prompt}}
+          result: "{{.result}}"
+
+    # ================================================================
+    #  TECH LEAD — Master Router & Coordinator
+    # ================================================================
+    # The tech-lead is the master agent. It receives user requests,
+    # routes them to the right specialist(s), and produces the final
+    # consolidated output.
+
+    - name: "tech-lead"
+      master: true
+      adapter: "ollama"
+      language: "ES"
+      model: "gemma3:12b"
+
+      specialties:
+        - "Software Architecture"
+        - "Task Coordination"
+        - "Solution Design"
+        - "Code Review"
+
+      rags:
+        files:
+          - "./rag-docs/frontend-angular.md"
+          - "./rag-docs/backend-go.md"
+
+      system: >
+        You are the Tech Lead of the swarm. Your role is to coordinate specialist agents,
+        consolidate their outputs, resolve conflicts, and produce a final, coherent,
+        and actionable solution. Prioritize simplicity, maintainability, and delivery speed.
+        All specialist agents receive documentation context via the knowledge base.
+        You MUST ensure that every agent strictly follows the documented patterns.
+
+      states:
+        # --- Entry point: classify the request ---
+        - name: "initial"
+          system: >
+            You are the master router.
+            1. If the user is greeting you or having casual chat, reply EXACTLY with "CHAT".
+            2. If the user provides actionable instructions to build software, reply EXACTLY with "PLAN".
+          prompt: |
+            [Chat History]
+            {{.history}}
+
+            [Current Request]
+            {{.prompt}}
+          options:
+            - "PLAN"
+            - "CHAT"
+          routes:
+            "PLAN": "plan"
+            "CHAT": "chat"
+
+        # --- Casual conversation ---
+        - name: "chat"
+          system: >
+            You are the Tech Lead in direct conversation with the user.
+            If they said hello, greet them back warmly.
+            If they need clarification, ask politely.
+          prompt: |
+            [Chat History]
+            {{.history}}
+
+            [Current Request]
+            {{.prompt}}
+          result: "{{.result}}"
+
+        # --- Route to the right specialists ---
+        - name: "plan"
+          system: >
+            Analyze the user's CURRENT request and determine the exact technical stack.
+            CRITICAL: Only route based on the immediate action required.
+            If only frontend, reply "ANGULAR_ONLY".
+            If only Go backend, reply "GO_ONLY".
+            If both frontend + backend, reply "FULLSTACK".
+            If only design/UI/UX, reply "DESIGN_ONLY".
+          prompt: |
+            [Chat History]
+            {{.history}}
+
+            [Current Request]
+            {{.prompt}}
+          options:
+            - "ANGULAR_ONLY"
+            - "GO_ONLY"
+            - "FULLSTACK"
+            - "DESIGN_ONLY"
+          routes:
+            "ANGULAR_ONLY": "flow_angular"
+            "GO_ONLY": "flow_go"
+            "FULLSTACK": "flow_fullstack"
+            "DESIGN_ONLY": "flow_designer"
+
+        # --- Routing pipelines (cross-agent transitions) ---
+        - name: "flow_designer"
+          system: "Routing pipeline..."
+          prompt: "Execute"
+          transitions:
+            - "designer-ui.initial"
+            - "reviewer.initial"
+            - "finish"
+
+        - name: "flow_angular"
+          system: "Routing pipeline..."
+          prompt: "Execute"
+          transitions:
+            - "frontend-angular.initial"
+            - "reviewer.initial"
+            - "finish"
+
+        - name: "flow_go"
+          system: "Routing pipeline..."
+          prompt: "Execute"
+          transitions:
+            - "backend-go.initial"
+            - "reviewer.initial"
+            - "finish"
+
+        - name: "flow_fullstack"
+          system: "Routing pipeline..."
+          prompt: "Execute"
+          transitions:
+            - "frontend-angular.initial"
+            - "backend-go.initial"
+            - "reviewer.initial"
+            - "finish"
+
+        # --- Final consolidation ---
+        - name: "finish"
+          system: >
+            Produce the final integrated solution. Resolve contradictions,
+            remove redundancy, and ensure alignment across all components.
+          prompt: |
+            USER REQUEST:
+            {{.prompt}}
+
+            --- FRONTEND ---
+            {{.frontend-angular.result}}
+
+            --- BACKEND ---
+            {{.backend-go.result}}
+
+            --- DESIGN ---
+            {{.designer-ui.result}}
+
+            --- REVIEW ---
+            {{.reviewer.result}}
+
+            Merge all inputs into a single coherent solution.
+            Highlight key decisions and provide actionable next steps.
+          result: "{{.result}}"
+
+    # ================================================================
+    #  FRONTEND — Angular Specialist (4-state FSM)
+    # ================================================================
+
+    - name: "frontend-angular"
+      type: "coder"
+      adapter: "ollama"
+      language: "ES"
+      model: "gemma3:12b"
+      sandbox: "frontend"
+
+      specialties:
+        - "Angular 21"
+        - "TypeScript"
+        - "RxJS"
+        - "Tailwind CSS"
+
+      rags:
+        files:
+          - "./rag-docs/frontend-angular.md"
+
+      system: >
+        You are a senior Angular frontend specialist.
+
+      states:
+        - name: "initial"
+          system: >
+            Analyze the request and the injected documentation to propose
+            a production-ready Angular solution following documented patterns.
+          prompt: |
+            {{.prompt}}
+
+            Using the injected documentation, provide:
+            - Project scaffolding approach
+            - Architecture and component hierarchy
+            - State management strategy
+            - Routing plan
+          result: "{{.architecture}}"
+          docsearch:
+            agent: "librarian"
+          transitions:
+            - "implement"
+
+        - name: "implement"
+          system: >
+            Write the Angular code based on the architecture.
+            Use modern Angular features (Signals, standalone components).
+          prompt: |
+            Based on this architecture:
+            {{.architecture}}
+
+            Write the implementation. Use the write_file tool for each file.
+          result: "{{.code}}"
+          transitions:
+            - "testing"
+
+        - name: "testing"
+          system: >
+            Write unit tests for the Angular components.
+          prompt: |
+            Based on this code:
+            {{.code}}
+
+            Provide Jasmine/Jest unit tests with high coverage.
+          result: "{{.tests}}"
+          transitions:
+            - "finish"
+
+        - name: "finish"
+          system: >
+            Produce a final aggregated frontend report.
+          prompt: |
+            Combine into a delivery report:
+
+            [ARCHITECTURE]: {{.architecture}}
+            [CODE]: {{.code}}
+            [TESTS]: {{.tests}}
+
+            Output a JSON: { "status": "completed", "summary": "...", "files_modified": [...] }
+          result: "{{.result}}"
+
+    # ================================================================
+    #  BACKEND — Go Specialist (4-state FSM)
+    # ================================================================
+
+    - name: "backend-go"
+      type: "coder"
+      adapter: "ollama"
+      language: "ES"
+      model: "gemma3:12b"
+      sandbox: "backend"
+
+      specialties:
+        - "Go"
+        - "REST APIs"
+        - "PostgreSQL"
+        - "Clean Architecture"
+
+      rags:
+        files:
+          - "./rag-docs/backend-go.md"
+
+      system: >
+        You are a senior Go backend engineer.
+
+      states:
+        - name: "initial"
+          system: >
+            Design a Go backend following the documented patterns.
+          prompt: |
+            {{.prompt}}
+
+            Using the documentation, provide:
+            - Project structure (Go module, directories)
+            - Architecture (handlers, services, repositories)
+            - Data layer and framework choices
+          result: "{{.architecture}}"
+          docsearch:
+            agent: "librarian"
+          transitions:
+            - "implement"
+
+        - name: "implement"
+          system: >
+            Write the Go backend code. Prioritize performance and idiomatic Go.
+          prompt: |
+            Based on this architecture:
+            {{.architecture}}
+
+            Write the implementation. Use write_file for each file.
+          result: "{{.code}}"
+          transitions:
+            - "testing"
+
+        - name: "testing"
+          system: >
+            Write unit and integration tests for the Go backend.
+          prompt: |
+            Based on this code:
+            {{.code}}
+
+            Provide Go tests using table-driven patterns with t.Run.
+          result: "{{.tests}}"
+          transitions:
+            - "finish"
+
+        - name: "finish"
+          system: >
+            Produce a final aggregated backend report.
+          prompt: |
+            Combine into a delivery report:
+
+            [ARCHITECTURE]: {{.architecture}}
+            [CODE]: {{.code}}
+            [TESTS]: {{.tests}}
+
+            Output a JSON: { "status": "completed", "summary": "...", "files_modified": [...] }
+          result: "{{.result}}"
+
+    # ================================================================
+    #  DESIGNER — UI/UX Specialist
+    # ================================================================
+
+    - name: "designer-ui"
+      type: "coder"
+      adapter: "ollama"
+      language: "ES"
+      model: "gemma3:12b"
+
+      specialties:
+        - "UI/UX Design"
+        - "Tailwind CSS"
+        - "Accessibility"
+        - "Design Systems"
+
+      rags:
+        files:
+          - "./rag-docs/design-system.md"
+
+      system: >
+        You are a UI/UX designer focused on usability and modern design systems.
+
+      states:
+        - name: "initial"
+          system: >
+            Design the UI/UX solution.
+          prompt: |
+            {{.prompt}}
+
+            Provide:
+            - Layout hierarchy and wireframes
+            - Component strategy
+            - Design tokens (colors, spacing, typography)
+            - Accessibility considerations
+            - Tailwind CSS examples
+          result: "{{.result}}"
+
+    # ================================================================
+    #  REVIEWER — Cross-Functional Code Review
+    # ================================================================
+
+    - name: "reviewer"
+      type: "auditor"
+      adapter: "ollama"
+      language: "ES"
+      model: "gemma3:12b"
+
+      specialties:
+        - "Architecture Review"
+        - "Security Audit"
+        - "DX (Developer Experience)"
+
+      rags:
+        files:
+          - "./rag-docs/frontend-angular.md"
+          - "./rag-docs/backend-go.md"
+          - "./rag-docs/design-system.md"
+
+      system: >
+        You are a cross-functional reviewer focused on consistency and simplicity.
+
+      states:
+        - name: "initial"
+          system: >
+            Critically review all proposals from the specialists.
+          prompt: |
+            USER REQUEST: {{.prompt}}
+
+            FRONTEND: {{.frontend-angular.result}}
+            BACKEND:  {{.backend-go.result}}
+            DESIGN:   {{.designer-ui.result}}
+
+            Provide:
+            - Inconsistencies between frontend and backend
+            - Overengineering risks
+            - Security issues
+            - Simpler alternatives
+            - Missing pieces
+          result: "{{.result}}"
+
+    # ================================================================
+    #  AUDITOR BOT — Triggered on FILE_MODIFIED
+    # ================================================================
+    # Wakes up when a file is modified. Reviews the diff against
+    # documented architecture rules using docsearch.
+
+    - name: "auditor-bot"
+      type: "auditor"
+      triggers:
+        - "FILE_MODIFIED"
+      adapter: "ollama"
+      language: "ES"
+      model: "gemma3:4b"
+
+      specialties:
+        - "Code Review"
+        - "Security Audit"
+        - "Refactoring"
+
+      system: >
+        You are a strict software auditor. You analyze code for data races,
+        memory leaks, security vulnerabilities, and architecture violations.
+        You don't write new code — you only audit and propose patches.
+
+      states:
+        - name: "initial"
+          system: >
+            Route the audit based on the file type being modified.
+            If it's a frontend file (.ts, .html, .css), reply "FRONTEND".
+            If it's a backend file (.go), reply "BACKEND_GO".
+          prompt: |
+            File modified: {{.prompt}}
+          options:
+            - "FRONTEND"
+            - "BACKEND_GO"
+          routes:
+            "FRONTEND": "audit_frontend"
+            "BACKEND_GO": "audit_backend_go"
+
+        - name: "audit_frontend"
+          docsearch:
+            agent: "librarian"
+            prompt: "Extract frontend architecture rules and best practices for Angular."
+            context_var: "frontend_rules"
+            required: true
+          prompt: |
+            === Architecture Rules ===
+            {{.frontend_rules}}
+
+            === File to Audit ===
+            {{.target_file_content}}
+
+            Audit the code and report violations.
+          result: "{{.result}}"
+
+        - name: "audit_backend_go"
+          docsearch:
+            agent: "librarian"
+            prompt: "Extract Go concurrency guidelines, error handling, and Clean Architecture rules."
+            context_var: "backend_rules"
+            required: true
+          prompt: |
+            === Architecture Rules ===
+            {{.backend_rules}}
+
+            === File to Audit ===
+            {{.target_file_content}}
+
+            Audit the code for data races, error handling, and architecture violations.
+          result: "{{.result}}"
+
+    # ================================================================
+    #  TENTH MAN — Devil's Advocate (triggered on TASK_COMPLETED)
+    # ================================================================
+
+    - name: "tenth-man"
+      type: "auditor"
+      triggers:
+        - "TASK_COMPLETED"
+      adapter: "ollama"
+      language: "ES"
+      model: "gemma3:12b"
+
+      specialties:
+        - "Devil's Advocate"
+        - "Edge Case Analysis"
+        - "Quality Assurance"
+
+      system: >
+        You are the Tenth Man. Your function is destructive: if all engineering agents
+        have approved a task, you assume it's wrong and proactively search for edge cases,
+        bottlenecks, and architectural flaws they missed. You are the final judge.
+
+      states:
+        - name: "initial"
+          system: >
+            A task was marked completed. Review the context and interrogate.
+          prompt: |
+            === Completed Task ===
+            {{.task_context}}
+
+            What would happen if the database goes down? If latency spikes to 10s?
+            If the user sends 10,000 concurrent requests? Find the weak points.
+          max_retries: 3
+          fallback_state: "verdict"
+          options:
+            - "VERDICT"
+          routes:
+            "VERDICT": "verdict"
+
+        - name: "verdict"
+          system: >
+            Emit your final verdict. APPROVE or REJECT with detailed reasoning.
+          prompt: |
+            Based on all evidence, do you APPROVE or REJECT this implementation?
+            If rejecting, provide the exact failure reason.
+          options:
+            - "APPROVE"
+            - "REJECT"
+          routes:
+            "APPROVE": "done"
+            "REJECT": "done"
+
+        - name: "done"
+          system: ""
+          prompt: ""
+          result: "{{.result}}"
+
+    # ================================================================
+    #  CI FIXER — Triggered on BUILD_FAILED
+    # ================================================================
+
+    - name: "ci-fixer"
+      type: "auditor"
+      triggers:
+        - "BUILD_FAILED"
+      adapter: "ollama"
+      language: "ES"
+      model: "gemma3:4b"
+
+      specialties:
+        - "Syntax Error Resolution"
+        - "Compiler Debugging"
+
+      system: >
+        You are the CI Fixer. You wake up when a build fails. Read the error log,
+        deduce the failing line, and produce an immediate patch.
+
+      states:
+        - name: "initial"
+          system: >
+            Analyze the compiler error and generate the fix.
+          prompt: |
+            === Build Error Log ===
+            {{.build_error_log}}
+
+            === Affected File ===
+            {{.broken_file_content}}
+
+            Generate the exact code to fix this compilation error.
+          result: "{{.result}}"
+
+    # ================================================================
+    #  SRE BOT — Triggered on ERROR_LOGGED
+    # ================================================================
+
+    - name: "sre-bot"
+      type: "auditor"
+      triggers:
+        - "ERROR_LOGGED"
+      adapter: "ollama"
+      language: "ES"
+      model: "gemma3:4b"
+
+      specialties:
+        - "Site Reliability"
+        - "Incident Response"
+        - "Log Analysis"
+
+      system: >
+        You are the SRE Bot. You wake up when a panic, segfault, or fatal error
+        is detected. Trace the stack, locate the culprit, and create a P0 ticket.
+
+      states:
+        - name: "initial"
+          system: >
+            Analyze the panic trace and produce a forensic report.
+          prompt: |
+            === Stack Trace ===
+            {{.panic_trace}}
+
+            Generate: Culprit file, Probable cause, Suggested fix.
+          result: "{{.result}}"
