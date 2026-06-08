@@ -1,9 +1,13 @@
 # moa — Multi-Agent Orchestrator for Go
 
+[![Go Reference](https://pkg.go.dev/badge/github.com/formonkey/moa.svg)](https://pkg.go.dev/github.com/formonkey/moa)
 [![Go](https://img.shields.io/badge/Go-1.22+-00ADD8?logo=go)](https://go.dev)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
+[![Go Report Card](https://goreportcard.com/badge/github.com/formonkey/moa)](https://goreportcard.com/report/github.com/formonkey/moa)
 
 Build production-grade AI agents in Go. moa gives you composable agents, tool orchestration, lazy tool loading, code graph awareness, security sandboxing, guardrails, observability, swarm coordination, skill optimization, RAG, A2A protocol support, and SSE streaming — all in pure Go with zero heavy dependencies.
+
+> **Keywords:** Go AI framework, LLM orchestrator, multi-agent system, Golang AI agents, OpenAI Go SDK, Gemini Go, Ollama Go, RAG Go, agent framework, agentic AI
 
 ## Quick Start
 
