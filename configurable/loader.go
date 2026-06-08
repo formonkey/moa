@@ -1,6 +1,7 @@
 package configurable
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"os"
@@ -184,7 +185,9 @@ func registeredAgentClasses() []string {
 
 func newLLMAgent(ctx context.Context, data []byte, configPath string) (agent.Agent, error) {
 	var cfg LLMAgentYAMLConfig
-	if err := yaml.Unmarshal(data, &cfg); err != nil {
+	dec := yaml.NewDecoder(bytes.NewReader(data))
+	dec.KnownFields(true)
+	if err := dec.Decode(&cfg); err != nil {
 		return nil, fmt.Errorf("configurable: failed to parse LlmAgent config: %w", err)
 	}
 	if cfg.Name == "" {

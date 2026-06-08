@@ -9,14 +9,20 @@ import (
 	"iter"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/formonkey/moa/model"
 	"google.golang.org/genai"
 )
 
+// defaultTimeout is the HTTP timeout for Ollama requests.
+// Ollama runs locally, so requests should be fast, but generation can be slow.
+const defaultTimeout = 5 * time.Minute
+
 type Client struct {
-	endpoint string
-	model    string
+	endpoint   string
+	model      string
+	httpClient *http.Client
 }
 
 // NewClient initializes a native Ollama adapter.
@@ -36,8 +42,9 @@ func NewClient(endpoint, defaultModel string) *Client {
 		defaultModel = "llama3.2"
 	}
 	return &Client{
-		endpoint: endpoint,
-		model:    defaultModel,
+		endpoint:   endpoint,
+		model:      defaultModel,
+		httpClient: &http.Client{Timeout: defaultTimeout},
 	}
 }
 
@@ -147,7 +154,7 @@ func (c *Client) GenerateContent(ctx context.Context, req *model.LLMRequest, str
 		}
 		httpReq.Header.Set("Content-Type", "application/json")
 
-		resp, err := http.DefaultClient.Do(httpReq)
+		resp, err := c.httpClient.Do(httpReq)
 		if err != nil {
 			yield(nil, err)
 			return

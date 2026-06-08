@@ -18,6 +18,7 @@ import (
 	"iter"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/formonkey/moa/model"
 	"google.golang.org/genai"
@@ -35,25 +36,30 @@ type Config struct {
 	Headers map[string]string
 }
 
+// defaultTimeout for OpenAI-compatible API requests.
+const defaultTimeout = 5 * time.Minute
+
 // NewClient creates an OpenAI-compatible adapter.
 func NewClient(cfg Config) *Client {
 	if cfg.BaseURL == "" {
 		cfg.BaseURL = "https://api.openai.com/v1"
 	}
 	return &Client{
-		apiKey:  cfg.APIKey,
-		baseURL: strings.TrimRight(cfg.BaseURL, "/"),
-		model:   cfg.Model,
-		headers: cfg.Headers,
+		apiKey:     cfg.APIKey,
+		baseURL:    strings.TrimRight(cfg.BaseURL, "/"),
+		model:      cfg.Model,
+		headers:    cfg.Headers,
+		httpClient: &http.Client{Timeout: defaultTimeout},
 	}
 }
 
 // Client implements model.LLM for OpenAI-compatible APIs.
 type Client struct {
-	apiKey  string
-	baseURL string
-	model   string
-	headers map[string]string
+	apiKey     string
+	baseURL    string
+	model      string
+	headers    map[string]string
+	httpClient *http.Client
 }
 
 func (c *Client) Name() string { return c.model }
@@ -130,7 +136,7 @@ func (c *Client) GenerateContent(ctx context.Context, req *model.LLMRequest, str
 			httpReq.Header.Set(k, v)
 		}
 
-		resp, err := http.DefaultClient.Do(httpReq)
+		resp, err := c.httpClient.Do(httpReq)
 		if err != nil {
 			yield(nil, fmt.Errorf("openai: request failed: %w", err))
 			return

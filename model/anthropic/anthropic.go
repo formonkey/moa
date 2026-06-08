@@ -16,6 +16,7 @@ import (
 	"iter"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/formonkey/moa/model"
 	"google.golang.org/genai"
@@ -23,6 +24,7 @@ import (
 
 const defaultBaseURL = "https://api.anthropic.com/v1"
 const defaultAPIVersion = "2023-06-01"
+const defaultTimeout = 5 * time.Minute
 
 // Config for the Anthropic adapter.
 type Config struct {
@@ -53,6 +55,7 @@ func NewClient(cfg Config) *Client {
 		model:      cfg.Model,
 		apiVersion: cfg.APIVersion,
 		maxTokens:  cfg.MaxTokens,
+		httpClient: &http.Client{Timeout: defaultTimeout},
 	}
 }
 
@@ -63,6 +66,7 @@ type Client struct {
 	model      string
 	apiVersion string
 	maxTokens  int
+	httpClient *http.Client
 }
 
 func (c *Client) Name() string { return c.model }
@@ -141,7 +145,7 @@ func (c *Client) GenerateContent(ctx context.Context, req *model.LLMRequest, str
 		httpReq.Header.Set("x-api-key", c.apiKey)
 		httpReq.Header.Set("anthropic-version", c.apiVersion)
 
-		resp, err := http.DefaultClient.Do(httpReq)
+		resp, err := c.httpClient.Do(httpReq)
 		if err != nil {
 			yield(nil, fmt.Errorf("anthropic: request failed: %w", err))
 			return
