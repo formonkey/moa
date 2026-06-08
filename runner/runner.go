@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"iter"
 	"log"
+	"sync"
 
 	"github.com/google/uuid"
 	"google.golang.org/genai"
@@ -94,10 +95,21 @@ type Runner struct {
 	parentMap       agent.ParentMap
 
 	autoCreateSession bool
+
+	cancelMu sync.Mutex
+	cancelFn context.CancelFunc // cancel for the active run, if any
 }
 
-// Close shuts down the runner, calling CloseFunc on all plugins.
+// Close shuts down the runner gracefully.
+// If a run is in progress, it is cancelled first. Then all plugins are closed.
 func (r *Runner) Close() error {
+	r.cancelMu.Lock()
+	if r.cancelFn != nil {
+		r.cancelFn()
+		r.cancelFn = nil
+	}
+	r.cancelMu.Unlock()
+
 	if r.pluginManager != nil {
 		return r.pluginManager.Close()
 	}
@@ -107,6 +119,19 @@ func (r *Runner) Close() error {
 // Run executes the agent for the given user input, yielding events from agents.
 func (r *Runner) Run(ctx context.Context, userID, sessionID string, msg *genai.Content, cfg agent.RunConfig, opts ...RunOption) iter.Seq2[*session.Event, error] {
 	return func(yield func(*session.Event, error) bool) {
+		// Wrap context so Close() can cancel in-progress runs
+		ctx, cancel := context.WithCancel(ctx)
+		defer cancel()
+
+		r.cancelMu.Lock()
+		r.cancelFn = cancel
+		r.cancelMu.Unlock()
+		defer func() {
+			r.cancelMu.Lock()
+			r.cancelFn = nil
+			r.cancelMu.Unlock()
+		}()
+
 		options := runOptions{}
 		for _, opt := range opts {
 			opt(&options)

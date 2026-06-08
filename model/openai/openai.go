@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/formonkey/moa/model"
+	"github.com/formonkey/moa/model/httputil"
 	"google.golang.org/genai"
 )
 
@@ -123,20 +124,19 @@ func (c *Client) GenerateContent(ctx context.Context, req *model.LLMRequest, str
 			return
 		}
 
-		httpReq, err := http.NewRequestWithContext(ctx, "POST",
-			fmt.Sprintf("%s/chat/completions", c.baseURL), bytes.NewBuffer(body))
-		if err != nil {
-			yield(nil, err)
-			return
-		}
-
-		httpReq.Header.Set("Content-Type", "application/json")
-		httpReq.Header.Set("Authorization", "Bearer "+c.apiKey)
-		for k, v := range c.headers {
-			httpReq.Header.Set(k, v)
-		}
-
-		resp, err := c.httpClient.Do(httpReq)
+		resp, err := httputil.DoWithRetry(c.httpClient, func() (*http.Request, error) {
+			httpReq, err := http.NewRequestWithContext(ctx, "POST",
+				fmt.Sprintf("%s/chat/completions", c.baseURL), bytes.NewBuffer(body))
+			if err != nil {
+				return nil, err
+			}
+			httpReq.Header.Set("Content-Type", "application/json")
+			httpReq.Header.Set("Authorization", "Bearer "+c.apiKey)
+			for k, v := range c.headers {
+				httpReq.Header.Set(k, v)
+			}
+			return httpReq, nil
+		})
 		if err != nil {
 			yield(nil, fmt.Errorf("openai: request failed: %w", err))
 			return

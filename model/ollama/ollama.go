@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/formonkey/moa/model"
+	"github.com/formonkey/moa/model/httputil"
 	"google.golang.org/genai"
 )
 
@@ -147,22 +148,23 @@ func (c *Client) GenerateContent(ctx context.Context, req *model.LLMRequest, str
 			return
 		}
 
-		httpReq, err := http.NewRequestWithContext(ctx, "POST", fmt.Sprintf("%s/api/chat", c.endpoint), bytes.NewBuffer(body))
+		resp, err := httputil.DoWithRetry(c.httpClient, func() (*http.Request, error) {
+			httpReq, err := http.NewRequestWithContext(ctx, "POST",
+				fmt.Sprintf("%s/api/chat", c.endpoint), bytes.NewBuffer(body))
+			if err != nil {
+				return nil, err
+			}
+			httpReq.Header.Set("Content-Type", "application/json")
+			return httpReq, nil
+		})
 		if err != nil {
-			yield(nil, err)
-			return
-		}
-		httpReq.Header.Set("Content-Type", "application/json")
-
-		resp, err := c.httpClient.Do(httpReq)
-		if err != nil {
-			yield(nil, err)
+			yield(nil, fmt.Errorf("ollama: request failed: %w", err))
 			return
 		}
 		defer resp.Body.Close()
 
 		if resp.StatusCode != http.StatusOK {
-			yield(nil, fmt.Errorf("ollama API error: status %d", resp.StatusCode))
+			yield(nil, fmt.Errorf("ollama: API error status %d", resp.StatusCode))
 			return
 		}
 
