@@ -27,6 +27,8 @@ import (
 	"github.com/formonkey/moa/runner"
 	"github.com/formonkey/moa/session"
 	"github.com/formonkey/moa/swarm/swarmconfig"
+	"github.com/formonkey/moa/tool/devtools"
+	"github.com/formonkey/moa/tool/gittools"
 )
 
 func main() {
@@ -38,7 +40,24 @@ func main() {
 	prompt := strings.Join(os.Args[1:], " ")
 	ctx := context.Background()
 
-	// ── 1. Load swarm from YAML ──────────────────────────────────────
+	// ── 1. Register tools ───────────────────────────────────────────
+	// Tools must be registered BEFORE loading the YAML, because the
+	// swarm parser resolves tool names from the configurable registry.
+	// devtools.Register() provides: read_file, write_file, edit_file,
+	//                               list_dir, search_files, run_command
+	// gittools.Register() provides: git_status, git_diff, git_commit,
+	//                               git_branch, git_stash, git_log
+
+	if err := devtools.Register("."); err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to register devtools: %v\n", err)
+		os.Exit(1)
+	}
+	if err := gittools.Register("."); err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to register gittools: %v\n", err)
+		os.Exit(1)
+	}
+
+	// ── 2. Load swarm from YAML ──────────────────────────────────────
 	// This parses swarm.yaml and builds the full agent tree:
 	//   - Resolves all 10 adapters (ollama, openai, gemini, etc.)
 	//   - Creates per-agent RAG stores (BadgerDB) and indexes documents
@@ -53,7 +72,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	// ── 2. Configure plugins ─────────────────────────────────────────
+	// ── 3. Configure plugins ─────────────────────────────────────────
 	// Plugins wrap the runner and intercept agent lifecycle events.
 	// They are NOT defined in swarm.yaml — they're attached here so
 	// you have full control over plugin configuration per deployment.
@@ -80,7 +99,7 @@ func main() {
 		}),
 	}
 
-	// ── 3. Create runner ─────────────────────────────────────────────
+	// ── 4. Create runner ─────────────────────────────────────────────
 
 	r, err := runner.New(runner.Config{
 		AppName:           "swarm-dev-team",
@@ -95,7 +114,7 @@ func main() {
 	}
 	defer r.Close()
 
-	// ── 4. Start triggered agents (optional) ─────────────────────────
+	// ── 5. Start triggered agents (optional) ─────────────────────────
 	// The scheduler runs trigger-based agents in the background.
 	// In a real app, you'd emit events like "FILE_MODIFIED" or
 	// "BUILD_FAILED" to wake these agents up automatically.
@@ -105,7 +124,7 @@ func main() {
 		defer swarm.EventBus.Close()
 	}
 
-	// ── 5. Run the swarm ─────────────────────────────────────────────
+	// ── 6. Run the swarm ─────────────────────────────────────────────
 
 	fmt.Printf("\n🤖 Swarm: %s\n", swarm.RootAgent.Name())
 	fmt.Printf("📝 Request: %s\n", prompt)

@@ -39,6 +39,7 @@ in a single `swarm.yaml` file. It orchestrates a full development team with 10+ 
 |---------|-------|
 | **FSM States** | tech-lead (6 states), frontend (4), backend (4) |
 | **Per-agent RAG** | Each agent has its own `rags.files` list |
+| **Per-agent tools** | tech-lead: `scrape_url`, `search_files`; frontend: 6 devtools; backend: devtools + gittools |
 | **DocSearch** | frontend & backend query the librarian before coding |
 | **Cross-agent transitions** | `tech-lead → frontend-angular.initial → backend-go.initial` |
 | **Template interpolation** | `{{.prompt}}`, `{{.history}}`, `{{.frontend-angular.result}}` |
@@ -46,7 +47,7 @@ in a single `swarm.yaml` file. It orchestrates a full development team with 10+ 
 | **Transition pipelines** | `flow_fullstack` chains frontend → backend → reviewer → finish |
 | **Max retries + fallback** | tenth-man has `max_retries: 3` with `fallback_state: verdict` |
 | **Trigger-based agents** | auditor, tenth-man, ci-fixer, sre-bot |
-| **Plugins** | cost-governor, circuit-breaker, logging (in main.go) |
+| **Plugins (main.go)** | cost-governor, circuit-breaker, logging |
 | **10 adapters** | Uses ollama, but any adapter works (openai, gemini, anthropic...) |
 | **Specialties & language** | Each agent has domain specialties, all respond in Spanish |
 

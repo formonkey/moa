@@ -9,6 +9,8 @@
 #   ✅ Template interpolation ({{.prompt}}, {{.history}}, {{.agent.result}})
 #   ✅ Trigger-based agents (FILE_MODIFIED, TASK_COMPLETED, BUILD_FAILED)
 #   ✅ Librarian agent for knowledge retrieval via docsearch
+#   ✅ Per-agent tools (devtools: read/write/edit, gittools: status/diff/commit)
+#   ✅ Per-state tools (different tools per FSM state)
 #   ✅ Tenth Man pattern (devil's advocate review)
 #   ✅ Max retries with fallback states
 #   ✅ 10 adapter support (ollama, openai, gemini, anthropic, etc.)
@@ -100,6 +102,13 @@ swarm:
         and actionable solution. Prioritize simplicity, maintainability, and delivery speed.
         All specialist agents receive documentation context via the knowledge base.
         You MUST ensure that every agent strictly follows the documented patterns.
+
+      # Tools available to the tech-lead for project inspection
+      tools:
+        - scrape_url
+        - search_files
+        - read_file
+        - list_dir
 
       states:
         # --- Entry point: classify the request ---
@@ -244,6 +253,15 @@ swarm:
       system: >
         You are a senior Angular frontend specialist.
 
+      # Full devtools for reading, writing, and editing frontend files
+      tools:
+        - read_file
+        - write_file
+        - edit_file
+        - list_dir
+        - search_files
+        - run_command
+
       states:
         - name: "initial"
           system: >
@@ -324,6 +342,18 @@ swarm:
 
       system: >
         You are a senior Go backend engineer.
+
+      # Full devtools + git for backend development
+      tools:
+        - read_file
+        - write_file
+        - edit_file
+        - list_dir
+        - search_files
+        - run_command
+        - git_status
+        - git_diff
+        - git_commit
 
       states:
         - name: "initial"
