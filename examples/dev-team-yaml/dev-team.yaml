@@ -1,0 +1,178 @@
+# dev-team.yaml — Full development team in a single file
+#
+# Architecture:
+#   Tech Lead (Gemini) delegates to:
+#     ├── Frontend Dev (Qwen local) — React/TypeScript
+#     └── Backend Dev  (Qwen local) — Go APIs
+#
+# Features used:
+#   ✅ 3 agents in 1 file (inline sub_agents)
+#   ✅ 3 model providers (Gemini, Ollama, OpenAI for teacher)
+#   ✅ Cost Governor (tokens + wall time + tool caps)
+#   ✅ Circuit Breaker (loop + failure detection)
+#   ✅ Teacher Escalation (local → cloud failover)
+#   ✅ Agent delegation via sub_agents
+#   ✅ output_key for inter-agent state sharing
+#   ✅ disallow_transfer_to_peers (controlled communication)
+#   ✅ Toolbox: devtools, codegraph, scraper
+#
+# Run:
+#   cd examples/dev-team-yaml
+#   export GEMINI_API_KEY=...
+#   export OPENAI_API_KEY=...   # for teacher escalation
+#   go run main.go "Add a user profile page with a REST API"
+
+name: tech-lead
+model: gemini-2.5-flash
+provider: gemini
+api_key: "${GEMINI_API_KEY}"                # Resolves env var automatically
+description: "Senior Tech Lead — coordinates frontend and backend"
+
+instruction: |
+  You are a Senior Tech Lead managing a development team.
+
+  Your team:
+  - 'frontend-dev': Expert React/TypeScript developer for UI work
+  - 'backend-dev': Expert Go developer for API/server work
+
+  Your responsibilities:
+  1. Analyze the user's request and break it into frontend + backend tasks
+  2. Delegate to the right specialist using agent transfer
+  3. Review their output_key results when they transfer back
+  4. Coordinate integration between frontend and backend
+  5. Provide the final summary
+
+  Always delegate. Never code yourself.
+
+tools:
+  - name: scrape_url
+    args:
+      timeout: "30s"
+  - name: codegraph
+    args:
+      project_dir: "./"
+
+output_key: "tech_lead_summary"
+
+plugins:
+  - name: cost-governor
+    args:
+      max_total_tokens: 200000
+      max_wall_time: "10m"
+      tool_call_caps:
+        run_command: 20
+        write_file: 30
+
+  - name: circuit-breaker
+    args:
+      max_identical_calls: 5
+      max_consecutive_fails: 5
+      cooldown_duration: "30s"
+
+  - name: teacher-escalation
+    args:
+      teacher_model: gpt-4o
+      teacher_provider: openai
+      min_confidence: 0.7
+
+# ──────────────────────────────────────────────
+# Sub-agents — defined INLINE, no separate files
+# ──────────────────────────────────────────────
+sub_agents:
+
+  # ─── Frontend Developer ───
+  - inline:
+      name: frontend-dev
+      model: qwen3:8b
+      provider: ollama
+      description: "Expert React/TypeScript frontend developer"
+
+      instruction: |
+        You are a Senior Frontend Developer (React + TypeScript).
+
+        Stack: React 18, TypeScript, Tailwind CSS, Vite
+
+        Rules:
+        1. Read existing code FIRST (use read_file)
+        2. Follow project patterns (use codegraph to explore)
+        3. Write typed components with proper interfaces
+        4. Include error boundaries and loading states
+        5. When done, transfer back to 'tech-lead' with a summary
+
+      tools:
+        - name: devtools
+          args:
+            project_dir: "./frontend"
+        - name: codegraph
+          args:
+            project_dir: "./frontend"
+
+      output_key: "frontend_changes"
+      disallow_transfer_to_peers: true
+
+      plugins:
+        - name: cost-governor
+          args:
+            max_total_tokens: 80000
+            max_wall_time: "3m"
+            tool_call_caps:
+              run_command: 10
+              write_file: 15
+        - name: circuit-breaker
+          args:
+            max_identical_calls: 4
+            max_consecutive_fails: 3
+            cooldown_duration: "15s"
+
+  # ─── Backend Developer ───
+  - inline:
+      name: backend-dev
+      model: qwen3:8b
+      provider: ollama
+      description: "Expert Go backend developer"
+
+      instruction: |
+        You are a Senior Backend Developer (Go).
+
+        Stack: Go 1.22+, Chi router, PostgreSQL, Docker
+
+        Rules:
+        1. Read existing code FIRST (use read_file)
+        2. Follow project patterns (use codegraph to explore)
+        3. Write idiomatic Go: error handling, interfaces, tests
+        4. Use table-driven tests with t.Run
+        5. Run 'go vet' and 'go test' before reporting back
+        6. When done, transfer back to 'tech-lead' with a summary
+
+      tools:
+        - name: devtools
+          args:
+            project_dir: "./backend"
+        - name: codegraph
+          args:
+            project_dir: "./backend"
+        - name: scrape_url
+          args:
+            timeout: "15s"
+
+      output_key: "backend_changes"
+      disallow_transfer_to_peers: true
+
+      plugins:
+        - name: cost-governor
+          args:
+            max_total_tokens: 80000
+            max_wall_time: "3m"
+            tool_call_caps:
+              run_command: 15
+              write_file: 15
+        - name: circuit-breaker
+          args:
+            max_identical_calls: 4
+            max_consecutive_fails: 3
+            cooldown_duration: "15s"
+        - name: teacher-escalation
+          args:
+            teacher_model: gemini-2.5-flash
+            teacher_provider: gemini
+            min_confidence: 0.6

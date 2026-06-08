@@ -1,0 +1,16 @@
+{
+	"folders": [
+		{
+			"path": ".."
+		},
+		{
+			"path": "../../moa-e2e-fe"
+		},
+		{
+			"path": "../../moa-example"
+		},
+		{
+			"path": "../../moa-web"
+		}
+	]
+}
