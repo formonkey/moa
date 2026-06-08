@@ -1024,7 +1024,25 @@ agent, cleanup, _ := developer.NewAgent(ctx, developer.AgentConfig{
 defer cleanup()
 ```
 
-Auto-detects language (Go/TS/Python/Rust), framework, project structure. See [docs/developer-agent.md](docs/developer-agent.md).
+Auto-detects language, framework, and project structure.
+
+**Supported languages (11):**
+
+| Language | Manifest | Frameworks |
+|----------|----------|------------|
+| Go | `go.mod` | Gin, Echo, Fiber, Chi, Gorilla, Beego |
+| TypeScript/JS | `package.json` | Next, Angular, Nuxt, Vue, Svelte, React, Express, NestJS, Remix, Astro |
+| Python | `pyproject.toml` | FastAPI, Django, Flask, Starlette, Litestar, Sanic |
+| Rust | `Cargo.toml` | Actix, Axum, Rocket, Warp, Tauri |
+| Java | `pom.xml` / `build.gradle` | Spring Boot, Quarkus, Micronaut, Vert.x, Android |
+| Kotlin | `build.gradle.kts` | Ktor, Spring Boot, Compose, Android |
+| C# | `.csproj` / `.sln` | ASP.NET, Blazor, MAUI, Avalonia, Unity |
+| PHP | `composer.json` | Laravel, Symfony, CakePHP, CodeIgniter, Yii, WordPress, Drupal |
+| Ruby | `Gemfile` | Rails, Sinatra, Hanami, Jekyll |
+| Swift | `Package.swift` / `.xcodeproj` | Vapor, Hummingbird, SwiftUI |
+| Dart | `pubspec.yaml` | Flutter, Shelf, Dart Frog, Serverpod |
+
+See [docs/developer-agent.md](docs/developer-agent.md).
 
 ---
 
@@ -1193,6 +1211,21 @@ bb.PostForReview("analyzer", "security_report.md", "Check for false positives")
 review := bb.ClaimReview("reviewer-agent")
 ```
 
+### Swarm YAML (swarmconfig)
+
+Declare entire multi-agent swarms in a single YAML file. See [`examples/swarm-dev-team/`](examples/swarm-dev-team/) for a complete 10-agent engineering swarm:
+
+```go
+swarm, _ := swarmconfig.FromYAML(ctx, "./swarm.yaml")
+r, _ := runner.New(runner.Config{
+    Agent:          swarm.RootAgent,
+    SessionService: session.InMemoryService(),
+    Plugins:        plugins,
+})
+```
+
+Features in swarm YAML: FSM states, per-agent RAG, cross-agent transitions, docsearch, triggers (FILE_MODIFIED, TASK_COMPLETED), template interpolation, routing pipelines, max retries with fallback, 10 adapter support.
+
 ---
 
 ## 🌐 A2A Protocol
@@ -1323,6 +1356,7 @@ moa/
 ├── skillopt/               # 🧬 Skill optimizer (text-space training)
 ├── eval/                   # 🧪 Testing framework
 ├── swarm/                  # 🐝 Multi-agent coordination
+│   ├── swarmconfig/        # YAML swarm loader
 │   ├── blackboard/         # Shared data matrix
 │   ├── scheduler/          # Task scheduling
 │   ├── fsmagent/           # Finite state machine
@@ -1331,11 +1365,17 @@ moa/
 │   ├── cron/               # Scheduled execution
 │   ├── watcher/            # Event watching
 │   └── webhook/            # HTTP triggers
+├── skill/                  # 🎯 Capability bundles
+│   └── developer/          # 👨‍💻 Developer Agent (11 languages, 50+ frameworks)
 ├── a2a/                    # 🌐 Agent-to-Agent protocol
 ├── streaming/              # 📡 SSE streaming
 ├── telemetry/              # Telemetry utilities
 ├── artifact/               # Artifact management
 ├── internal/               # Internal utilities
+├── examples/               # 📘 Runnable examples
+│   ├── dev-team-yaml/      # 3-agent dev team (YAML config)
+│   ├── dev-team-go/        # 3-agent dev team (pure Go)
+│   └── swarm-dev-team/     # 10-agent engineering swarm (FSM + RAG + triggers)
 └── docs/                   # Documentation
 ```
 
